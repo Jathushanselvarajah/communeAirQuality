@@ -1,225 +1,224 @@
 <template>
-  <div class="commune-details">
-    <div class="back-button">
-      <router-link to="#" @click.prevent="goBack">
-        <i class="fas fa-arrow-left"></i> Retour
-      </router-link>
+  <div>
+    <div class="search-bar">
+      <input
+        v-model="searchQuery"
+        @input="filterCommunes"
+        type="text"
+        placeholder="Rechercher une commune..."
+        class="search-input"
+      />
+      <i class="fas fa-search search-icon"></i>
     </div>
 
-    <h1>
-      <i class="fas fa-city"></i> Détails de la Commune : {{ communeName }}
-    </h1>
+    <div class="pagination">
+      <button
+        class="pagination-button"
+        :disabled="currentPage === 1"
+        @click="currentPage--"
+      >
+        <i class="fas fa-chevron-left"></i> Précédent
+      </button>
 
-    <div v-if="communeDetails" class="details-section">
-      <h2><i class="fas fa-info-circle"></i> Informations sur la Commune</h2>
-      <p>
-        <strong><i class="fas fa-map-marker-alt"></i> Code Département :</strong>
-        {{ communeDetails.codeDepartement }}
-      </p>
-      <p>
-        <strong><i class="fas fa-envelope"></i> Code postal :</strong>
-        {{ communeDetails.codesPostaux.join(", ") }}
-      </p>
-      <p>
-        <strong><i class="fas fa-users"></i> Population :</strong>
-        {{ communeDetails.population }}
-      </p>
-      <p>
-        <strong><i class="fas fa-map"></i> Région :</strong>
-        {{ communeDetails.codeRegion }}
-      </p>
+      <span>Page {{ currentPage }} / {{ totalPages }}</span>
+
+      <button
+        class="pagination-button"
+        :disabled="currentPage === totalPages"
+        @click="currentPage++"
+      >
+        Suivant <i class="fas fa-chevron-right"></i>
+      </button>
     </div>
 
-    <div class="air-quality-section">
-      <h2><i class="fas fa-wind"></i> Qualité de l'Air</h2>
-
-      <div v-if="airQuality">
-        <p>
-          <strong><i class="fas fa-smog"></i> AQI :</strong>
-          {{ airQuality.aqi ?? "N/A" }}
-        </p>
-        <p>
-          <strong><i class="fas fa-seedling"></i> PM2.5 :</strong>
-          {{ airQuality?.iaqi?.pm25?.v ?? "N/A" }} µg/m³
-        </p>
-        <p>
-          <strong><i class="fas fa-cloud"></i> PM10 :</strong>
-          {{ airQuality?.iaqi?.pm10?.v ?? "N/A" }} µg/m³
-        </p>
-        <p>
-          <strong><i class="fas fa-sun"></i> Ozone (O3) :</strong>
-          {{ airQuality?.iaqi?.o3?.v ?? "N/A" }} µg/m³
-        </p>
-        <p>
-          <strong><i class="fas fa-thermometer-half"></i> Température :</strong>
-          {{ airQuality?.iaqi?.t?.v ?? "N/A" }} °C
-        </p>
-        <p>
-          <strong><i class="fas fa-tint"></i> Humidité :</strong>
-          {{ airQuality?.iaqi?.h?.v ?? "N/A" }} %
-        </p>
-        <p>
-          <strong><i class="fas fa-wind"></i> Vitesse du vent :</strong>
-          {{ airQuality?.iaqi?.w?.v ?? "N/A" }} km/h
-        </p>
-      </div>
-
-      <div v-else class="no-info">
-        <i class="fas fa-exclamation-circle"></i> Pas d'infos disponibles pour la ville
+    <div class="communes-list">
+      <div
+        v-for="commune in paginatedCommunes"
+        :key="commune.code"
+        class="commune-card"
+      >
+        <p class="commune-name">{{ commune.nom }}</p>
+        <button class="info-button" @click="goToDetails(commune.nom)">
+          <i class="fas fa-info-circle"></i> Plus d'infos
+        </button>
       </div>
     </div>
 
-    <div v-if="communeDetails" class="map-section">
-      <h2><i class="fas fa-map"></i> Carte</h2>
-      <l-map :zoom="zoom" :center="center" style="height: 500px; width: 100%">
-        <l-tile-layer :url="url" :attribution="attribution"></l-tile-layer>
-        <l-marker :lat-lng="center"></l-marker>
-      </l-map>
+    <div class="pagination">
+      <button
+        class="pagination-button"
+        :disabled="currentPage === 1"
+        @click="currentPage--"
+      >
+        <i class="fas fa-chevron-left"></i> Précédent
+      </button>
+
+      <span>Page {{ currentPage }} / {{ totalPages }}</span>
+
+      <button
+        class="pagination-button"
+        :disabled="currentPage === totalPages"
+        @click="currentPage++"
+      >
+        Suivant <i class="fas fa-chevron-right"></i>
+      </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { LMap, LTileLayer, LMarker } from "@vue-leaflet/vue-leaflet";
-import "leaflet/dist/leaflet.css";
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 
-const route = useRoute();
 const router = useRouter();
-const communeName = route.params.name;
-const communeDetails = ref(null);
-const airQuality = ref(null);
-const zoom = ref(13);
-const center = ref([0, 0]);
-const url = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const attribution =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const fetchCommuneDetails = async () => {
+const communes = ref([]);
+const filteredCommunes = ref([]);
+const searchQuery = ref("");
+const currentPage = ref(1);
+const itemsPerPage = 20;
+
+const fetchCommunes = async () => {
   try {
-    const response = await fetch(
-      `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(communeName)}`
-    );
+    const response = await fetch("https://geo.api.gouv.fr/communes");
     const data = await response.json();
-
-    if (data.length > 0) {
-      communeDetails.value = data[0];
-      const communeCode = communeDetails.value.code;
-
-      const responseWithCoords = await fetch(
-        `https://geo.api.gouv.fr/communes/${communeCode}?fields=centre`
-      );
-      const dataWithCoords = await responseWithCoords.json();
-
-      if (
-        dataWithCoords &&
-        dataWithCoords.centre &&
-        dataWithCoords.centre.coordinates
-      ) {
-        const coordinates = dataWithCoords.centre.coordinates;
-        if (coordinates.length === 2) {
-          const [lon, lat] = coordinates;
-          center.value = [lat, lon];
-        }
-      }
-    }
-  } catch (err) {
-    console.error(err);
+    communes.value = data;
+    filteredCommunes.value = data;
+  } catch (error) {
+    console.error("Erreur lors de la récupération des communes:", error);
   }
 };
 
-const fetchAirQuality = async () => {
-  try {
-    const response = await fetch(
-      `https://api.waqi.info/feed/${encodeURIComponent(
-        communeName
-      )}/?token=8c60735638c56ca1699b92ac4975cd64891a87f5`
-    );
-    const json = await response.json();
+const filterCommunes = () => {
+  const q = searchQuery.value.trim().toLowerCase();
+  currentPage.value = 1;
 
-    if (json.status === "ok" && json.data) {
-      airQuality.value = json.data;
-    } else {
-      airQuality.value = null;
-    }
-  } catch (err) {
-    airQuality.value = null;
-  }
+  filteredCommunes.value = communes.value.filter((commune) =>
+    commune.nom.toLowerCase().includes(q)
+  );
 };
 
-const goBack = () => {
-  router.go(-1);
+const goToDetails = (communeName) => {
+  router.push(`/commune/${encodeURIComponent(communeName)}`);
 };
 
-onMounted(() => {
-  fetchCommuneDetails();
-  fetchAirQuality();
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredCommunes.value.length / itemsPerPage))
+);
+
+const paginatedCommunes = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage;
+  return filteredCommunes.value.slice(start, start + itemsPerPage);
 });
+
+onMounted(fetchCommunes);
 </script>
 
 <style scoped>
-@import url("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css");
-
-.commune-details {
-  padding: 20px;
-  font-family: Arial, sans-serif;
-  max-width: 800px;
-  margin: 0 auto;
-  background: #f9f9f9;
-  border-radius: 10px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-h1 {
-  font-size: 24px;
-  color: #333;
+.search-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   margin-bottom: 20px;
-  text-align: center;
+  position: relative;
 }
 
-h2 {
-  font-size: 20px;
-  color: #555;
-  margin-bottom: 15px;
-}
-
-p {
+.search-input {
+  width: 50%;
+  padding: 10px 15px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
   font-size: 16px;
-  margin: 5px 0;
-  color: #333;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-strong {
+.search-icon {
+  position: absolute;
+  right: 26%;
   color: #007bff;
+  font-size: 18px;
 }
 
-.no-info {
-  color: #555;
-  font-style: italic;
+.communes-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+  padding: 0 20px;
+}
+
+.commune-card {
+  padding: 20px;
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+  background-color: #f9f9f9;
+  text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.commune-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.commune-name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.info-button {
   margin-top: 10px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  background-color: #007bff;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
-.map-section {
+.info-button i {
+  margin-right: 5px;
+}
+
+.info-button:hover {
+  background-color: #0056b3;
+  transform: scale(1.05);
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
   margin-top: 20px;
 }
 
-.back-button a {
-  text-decoration: none;
-  color: inherit;
+.pagination-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  background-color: #007bff;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
 }
 
-.back-button a:hover {
-  color: #007bff;
+.pagination-button i {
+  margin: 0 5px;
 }
 
-.back-button {
-  margin-bottom: 20px;
-  font-size: 16px;
+.pagination-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
-.back-button i {
-  margin-right: 8px;
-  font-size: 18px;
+.pagination-button:hover:not(:disabled) {
+  background-color: #0056b3;
 }
 </style>
