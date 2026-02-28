@@ -2,7 +2,7 @@
 
 Ce projet permet de récupérer les informations détaillées d'une commune en France via l'API [Geo API](https://geo.api.gouv.fr) et d'afficher ces informations sur une carte interactive à l'aide de [Leaflet](https://leafletjs.com/).
 
-## Fonctionnalités 
+## Fonctionnalités 🎯
 
 - Affichage des informations détaillées sur la commune : 
   - Nom de la commune 
