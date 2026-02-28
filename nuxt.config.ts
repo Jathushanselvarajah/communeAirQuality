@@ -31,6 +31,13 @@ export default defineNuxtConfig({
           content: "website",
         },
       ],
+      link: [
+        {
+          rel: "icon",
+          type: "image/x-icon",
+          href: "/communeAirQuality/favicon.ico",
+        },
+      ],
     },
   },
 
